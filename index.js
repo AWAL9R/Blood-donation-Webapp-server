@@ -256,14 +256,45 @@ async function run() {
     if(req.query.limit){
       cursor.limit(parseInt(req.query.limit))
     }
-    
+
     const data=await cursor.toArray();
     res.send(data)
   })
 
+  app.get("/donation/:reqId", async (req, res) => {
+    const {reqId}=req.params;
+    const query={ _id: new ObjectId(reqId) };
+    
+    const donationReq =await donationCol.findOne(query);
+
+    res.send(donationReq)
+
+    // if(req.jwt_user.role=='admin' || donationReq.requester_email==req.jwt_email){
+    //     const result=await donationCol.deleteOne(query)
+    //     return res.send({message:result.deletedCount>0?"Deleted success.":"Error deleting the request"})
+    // }
+
+    // return res.send(403).send({message:"Access restricted."})
+  })
+
+
+  app.delete("/donation/:reqId", verifyJWTFetchUser, async (req, res) => {
+    const {reqId}=req.params;
+    const query={ _id: new ObjectId(reqId) };
+    
+    const donationReq =await donationCol.findOne(query);
+
+    if(req.jwt_user.role==='admin' || donationReq.requester_email===req.jwt_email){
+        const result=await donationCol.deleteOne(query)
+        return res.send({message:result.deletedCount>0?"Deleted success.":"Error deleting the request"})
+    }
+
+    return res.send(403).send({message:"Access restricted."})
+  })
+
 
   app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
+    console.log(`App listening on port ${port}`)
   })
 
 }
