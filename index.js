@@ -10,6 +10,10 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const jwt_key = process.env.JWT_KEY;
 
+
+const MILLS_24H = 86400000;
+
+
 const upload = multer({
   storage: multer.memoryStorage(),
   // limits: { fileSize: 1 * 1024 * 1024 },
@@ -48,6 +52,9 @@ app.use(cookieParser());
 const port = 3000
 
 
+const pick = (obj, keys) => Object.fromEntries(keys.map(k => [k, obj[k]]));
+
+
 async function run() {
   // Connect the client to the server	(optional starting in v4.7)
   console.log("Database connecting...")
@@ -59,6 +66,43 @@ async function run() {
   const database = client.db('blood_link');
   const usersCol = database.collection('users');
   const donationCol = database.collection('donation');
+
+
+
+
+  const verifyJWT = async (req, res, next) => {
+    const user_token = req.cookies.user_token;
+    if (!user_token) {
+      return res.status(401).send({ message: "Unauthorized access." })
+    }
+    // console.log(user_token);
+    const user_token_info = jwt.verify(user_token, jwt_key)
+    if (user_token_info.email) {
+      req.jwt_email = user_token_info.email;
+      next()
+    }
+    return res.status(401).send({ message: "Unauthorized access." })
+  }
+
+  const verifyJWTFetchUser = async (req, res, next) => {
+    const user_token = req.cookies.user_token;
+    if (!user_token) {
+      return res.status(401).send({ message: "Unauthorized access." })
+    }
+    // console.log(user_token);
+    const user_token_info = jwt.verify(user_token, jwt_key)
+    if (user_token_info.email) {
+      const userExists = await usersCol.findOne({ email: user_token_info.email })
+      if (userExists == null) {
+        return res.status(401).send({ message: "Unauthorized access." })
+      }
+      delete userExists.password;
+      req.jwt_email = user_token_info.email;
+      req.jwt_user = userExists;
+      return next()
+    }
+    return res.status(401).send({ message: "Unauthorized access." })
+  }
 
 
   app.get('/', (req, res) => {
@@ -98,7 +142,10 @@ async function run() {
       division: req.body.division,
       district: req.body.district,
       upazila: req.body.upazila,
-      password: bcrypt.hashSync(req.body.password, 10)
+      password: bcrypt.hashSync(req.body.password, 10),
+      status: "active",
+      role: "donor",
+      registerAt: new Date(),
     }
     const insert = await usersCol.insertOne(user)
     // console.log(insert);
@@ -111,12 +158,11 @@ async function run() {
       delete userExists.password;
 
       const user_token = jwt.sign({ email: userExists.email }, jwt_key, { expiresIn: 24 * 60 * 60 });
-      res.cookie('user_token', user_token, { maxAge: 900000, httpOnly: true });
+      res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true });
 
       return res.send({ message: "Register success...", user: userExists })
-    } else {
-      return res.send({ message: "Operation failed." })
     }
+    res.send({ message: "Something went wrong..." })
   })
 
 
@@ -129,34 +175,79 @@ async function run() {
       return res.send({ message: "User not found." })
     }
 
-    
+
     // console.log(req.body.password);
 
     if (bcrypt.compareSync(req.body.password, userExists.password) === true) {
       delete userExists.password;
       const user_token = jwt.sign({ email: userExists.email }, jwt_key, { expiresIn: 24 * 60 * 60 });
-      res.cookie('user_token', user_token, { maxAge: 900000, httpOnly: true });
+      res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true });
       return res.send({ message: "Login success...", user: userExists })
     }
+    res.send({ message: "Something went wrong..." })
   })
 
 
-  app.get('/me', async (req, res) => {
-    const user_token = req.cookies.user_token;
-    if(!user_token){
-      return res.send({ message: "User not found." })
+  app.get('/me', verifyJWTFetchUser, async (req, res) => {
+    if (req.jwt_user) {
+      return res.send({ message: "Login success...", user: req.jwt_user })
     }
-    // console.log(user_token);
-    const user_token_info = jwt.verify(user_token, jwt_key)
-    if (user_token_info.email) {
-      const userExists = await usersCol.findOne({ email: user_token_info.email })
-      if (userExists == null) {
-        return res.send({ message: "User not found." })
-      }
-      delete userExists.password;
-      return res.send({ message: "Login success...", user: userExists })
-    }
+    return res.send({ message: "Something went wrong..." })
+    // const user_token = req.cookies.user_token;
+    // if (!user_token) {
+    //   return res.send({ message: "User not found." })
+    // }
+    // // console.log(user_token);
+    // const user_token_info = jwt.verify(user_token, jwt_key)
+    // if (user_token_info.email) {
+    //   const userExists = await usersCol.findOne({ email: user_token_info.email })
+    //   if (userExists == null) {
+    //     return res.send({ message: "User not found." })
+    //   }
+    //   delete userExists.password;
+    //   return res.send({ message: "Login success...", user: userExists })
+    // }
+    // res.send({ message: "Something went wrong..." })
   })
+
+
+  app.get('/logout', async (req, res) => {
+    res.cookie('user_token', '', { maxAge: MILLS_24H, httpOnly: true });
+    res.send({ message: "Logout success..." })
+  })
+
+
+  app.post("/create_donation_request", verifyJWTFetchUser, async (req, res) => {
+    // console.log(req);
+    if(req.jwt_user.status!='active'){
+      return res.status(500).send({message:"Request Failed."})
+    }
+    const req_body = req.body;
+    req_body.status='pending';
+    req_body.createdAt=new Date();
+
+    const result = await donationCol.insertOne(req_body);
+    if(result.insertedId){
+      return res.send({message:"Request created success."})
+    }
+    return res.status(500).send({message:"Request Failed."})
+
+    // {
+    //   requester_name: 'Abdul Alo',
+    //     requester_email: 'arpxnm001@gmail.com',
+    //       receiver_name: 'Abdul Awal',
+    //         bloodGroup: 'B+',
+    //           division: 'Chattagram',
+    //             district: 'Comilla',
+    //               upazila: 'Debidwar',
+    //                 hospital_name: 'dfgfdgfg',
+    //                   full_address: '110/1, uttarkhan dhaka 1230',
+    //                     donation_date: '2002-03-31',
+    //                       donation_time: '12:45',
+    //                         request_message: 'vvv'
+    // }
+  })
+
 
 
   app.listen(port, () => {
