@@ -73,15 +73,15 @@ async function run() {
   const verifyJWT = async (req, res, next) => {
     const user_token = req.cookies.user_token;
     if (!user_token) {
-      return res.status(401).send({ message: "Unauthorized access." })
+      return res.status(401).send({ message: "Unauthorized access.(a)" })
     }
     // console.log(user_token);
     const user_token_info = jwt.verify(user_token, jwt_key)
     if (user_token_info.email) {
       req.jwt_email = user_token_info.email;
-      next()
+      return next()
     }
-    return res.status(401).send({ message: "Unauthorized access." })
+    return res.status(401).send({ message: "Unauthorized access.(b)" })
   }
 
   const verifyJWTFetchUser = async (req, res, next) => {
@@ -219,18 +219,18 @@ async function run() {
 
   app.post("/create_donation_request", verifyJWTFetchUser, async (req, res) => {
     // console.log(req);
-    if(req.jwt_user.status!='active'){
-      return res.status(500).send({message:"Request Failed."})
+    if (req.jwt_user.status != 'active') {
+      return res.status(500).send({ message: "Request Failed." })
     }
     const req_body = req.body;
-    req_body.status='pending';
-    req_body.createdAt=new Date();
+    req_body.status = 'pending';
+    req_body.createdAt = new Date();
 
     const result = await donationCol.insertOne(req_body);
-    if(result.insertedId){
-      return res.send({message:"Request created success."})
+    if (result.insertedId) {
+      return res.send({ message: "Request created success." })
     }
-    return res.status(500).send({message:"Request Failed."})
+    return res.status(500).send({ message: "Request Failed." })
 
     // {
     //   requester_name: 'Abdul Alo',
@@ -248,6 +248,18 @@ async function run() {
     // }
   })
 
+  app.get("/my-donation-requests", verifyJWT, async (req, res) => {
+    const query={ requester_email: req.jwt_email };
+    
+    const cursor = donationCol.find(query).sort({createdAt:-1})
+
+    if(req.query.limit){
+      cursor.limit(parseInt(req.query.limit))
+    }
+    
+    const data=await cursor.toArray();
+    res.send(data)
+  })
 
 
   app.listen(port, () => {
