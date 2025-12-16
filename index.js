@@ -73,7 +73,7 @@ async function run() {
   const verifyJWT = async (req, res, next) => {
     const user_token = req.cookies.user_token;
     if (!user_token) {
-      return res.status(401).send({ message: "Unauthorized access.(a)" })
+      return res.status(401).send({ success: false, message: "Unauthorized access.(a)" })
     }
     // console.log(user_token);
     const user_token_info = jwt.verify(user_token, jwt_key)
@@ -81,27 +81,27 @@ async function run() {
       req.jwt_email = user_token_info.email;
       return next()
     }
-    return res.status(401).send({ message: "Unauthorized access.(b)" })
+    return res.status(401).send({ success: false, message: "Unauthorized access.(b)" })
   }
 
   const verifyJWTFetchUser = async (req, res, next) => {
     const user_token = req.cookies.user_token;
     if (!user_token) {
-      return res.status(401).send({ message: "Unauthorized access." })
+      return res.status(401).send({ success: false, message: "Unauthorized access." })
     }
     // console.log(user_token);
     const user_token_info = jwt.verify(user_token, jwt_key)
     if (user_token_info.email) {
       const userExists = await usersCol.findOne({ email: user_token_info.email })
       if (userExists == null) {
-        return res.status(401).send({ message: "Unauthorized access." })
+        return res.status(401).send({ success: false, message: "Unauthorized access." })
       }
       delete userExists.password;
       req.jwt_email = user_token_info.email;
       req.jwt_user = userExists;
       return next()
     }
-    return res.status(401).send({ message: "Unauthorized access." })
+    return res.status(401).send({ success: false, message: "Unauthorized access." })
   }
 
 
@@ -121,9 +121,9 @@ async function run() {
         headers: form.getHeaders()
       });
 
-      res.json({ url: response.data.data.url });
+      res.json({ success: true, url: response.data.data.url });
     } catch (err) {
-      res.status(500).send(err.message);
+      res.status(500).send({ success: false, message: err.message });
     }
   });
 
@@ -132,7 +132,7 @@ async function run() {
     const userExists = await usersCol.findOne({ email: req.body.email })
     // console.log(userExists);
     if (userExists != null) {
-      return res.send({ message: "Email already in use." })
+      return res.send({ success: false, message: "Email already in use." })
     }
     const user = {
       email: req.body.email,
@@ -153,16 +153,16 @@ async function run() {
       const userExists = await usersCol.findOne({ email: req.body.email })
       // console.log(userExists);
       if (userExists == null) {
-        return res.send({ message: "User not found." })
+        return res.send({ success: false, message: "User not found." })
       }
       delete userExists.password;
 
       const user_token = jwt.sign({ email: userExists.email }, jwt_key, { expiresIn: 24 * 60 * 60 });
       res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true });
 
-      return res.send({ message: "Register success...", user: userExists })
+      return res.send({ success: true, message: "Register success...", user: userExists })
     }
-    res.send({ message: "Something went wrong..." })
+    res.send({ success: false, message: "Something went wrong..." })
   })
 
 
@@ -172,7 +172,7 @@ async function run() {
     const userExists = await usersCol.findOne({ email: req.body.email })
     // console.log(userExists);
     if (userExists == null) {
-      return res.send({ message: "User not found." })
+      return res.send({ success: false, message: "User not found.", })
     }
 
 
@@ -182,17 +182,17 @@ async function run() {
       delete userExists.password;
       const user_token = jwt.sign({ email: userExists.email }, jwt_key, { expiresIn: 24 * 60 * 60 });
       res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true });
-      return res.send({ message: "Login success...", user: userExists })
+      return res.send({ success: true, message: "Login success...", user: userExists, })
     }
-    res.send({ message: "Something went wrong..." })
+    res.send({ success: false, message: "Something went wrong...", })
   })
 
 
   app.get('/me', verifyJWTFetchUser, async (req, res) => {
     if (req.jwt_user) {
-      return res.send({ message: "Login success...", user: req.jwt_user })
+      return res.send({ message: "Login success...", user: req.jwt_user, success: true })
     }
-    return res.send({ message: "Something went wrong..." })
+    return res.send({ success: false, message: "Something went wrong...", })
     // const user_token = req.cookies.user_token;
     // if (!user_token) {
     //   return res.send({ message: "User not found." })
@@ -213,14 +213,14 @@ async function run() {
 
   app.get('/logout', async (req, res) => {
     res.cookie('user_token', '', { maxAge: MILLS_24H, httpOnly: true });
-    res.send({ message: "Logout success..." })
+    res.send({ success: true, message: "Logout success...", })
   })
 
 
   app.post("/create_donation_request", verifyJWTFetchUser, async (req, res) => {
     // console.log(req);
     if (req.jwt_user.status != 'active') {
-      return res.status(500).send({ message: "Request Failed." })
+      return res.status(500).send({ success: false, message: "Request Failed.", })
     }
     const req_body = req.body;
     req_body.status = 'pending';
@@ -228,9 +228,9 @@ async function run() {
 
     const result = await donationCol.insertOne(req_body);
     if (result.insertedId) {
-      return res.send({ message: "Request created success." })
+      return res.send({ message: "Request created success.", success: true })
     }
-    return res.status(500).send({ message: "Request Failed." })
+    return res.status(500).send({ message: "Request Failed.", success: false })
 
     // {
     //   requester_name: 'Abdul Alo',
@@ -249,23 +249,23 @@ async function run() {
   })
 
   app.get("/my-donation-requests", verifyJWT, async (req, res) => {
-    const query={ requester_email: req.jwt_email };
-    
-    const cursor = donationCol.find(query).sort({createdAt:-1})
+    const query = { requester_email: req.jwt_email };
 
-    if(req.query.limit){
+    const cursor = donationCol.find(query).sort({ createdAt: -1 })
+
+    if (req.query.limit) {
       cursor.limit(parseInt(req.query.limit))
     }
 
-    const data=await cursor.toArray();
+    const data = await cursor.toArray();
     res.send(data)
   })
 
   app.get("/donation/:reqId", async (req, res) => {
-    const {reqId}=req.params;
-    const query={ _id: new ObjectId(reqId) };
-    
-    const donationReq =await donationCol.findOne(query);
+    const { reqId } = req.params;
+    const query = { _id: new ObjectId(reqId) };
+
+    const donationReq = await donationCol.findOne(query);
 
     res.send(donationReq)
 
@@ -279,17 +279,36 @@ async function run() {
 
 
   app.delete("/donation/:reqId", verifyJWTFetchUser, async (req, res) => {
-    const {reqId}=req.params;
-    const query={ _id: new ObjectId(reqId) };
-    
-    const donationReq =await donationCol.findOne(query);
+    const { reqId } = req.params;
+    const query = { _id: new ObjectId(reqId) };
 
-    if(req.jwt_user.role==='admin' || donationReq.requester_email===req.jwt_email){
-        const result=await donationCol.deleteOne(query)
-        return res.send({message:result.deletedCount>0?"Deleted success.":"Error deleting the request"})
+    const donationReq = await donationCol.findOne(query);
+
+    if (req.jwt_user.role === 'admin' || donationReq.requester_email === req.jwt_email) {
+      const result = await donationCol.deleteOne(query)
+      return res.send({ message: result.deletedCount > 0 ? "Deleted success." : "Error deleting the request", success: result.deletedCount > 0 })
     }
 
-    return res.send(403).send({message:"Access restricted."})
+    return res.send(403).send({ message: "Access restricted.", success: false })
+  })
+
+  app.post("/edit_profile", verifyJWTFetchUser, async (req, res) => {
+    const query = { email: req.jwt_email };
+    const data = {
+      name: req.body.name,
+      photo: req.body.photo,
+      bloodGroup: req.body.bloodGroup,
+      division: req.body.division,
+      district: req.body.district,
+      upazila: req.body.upazila
+    }
+    const result = await usersCol.updateOne(query, { $set: data })
+    if (result.modifiedCount) {
+      const userExists = await usersCol.findOne(query)
+      delete userExists.password;
+      return res.send({ message: "Profile updated", success: true, user: userExists })
+    }
+    return res.send({ message: "Profile update failed", success: false })
   })
 
 
