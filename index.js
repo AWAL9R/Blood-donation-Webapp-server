@@ -228,9 +228,9 @@ async function run() {
 
     const result = await donationCol.insertOne(req_body);
     if (result.insertedId) {
-      return res.send({ message: "Request created success.", success: true })
+      return res.send({ success: true, message: "Request created success.", id: result.insertedId })
     }
-    return res.status(500).send({ message: "Request Failed.", success: false })
+    return res.status(500).send({ success: false, message: "Request Failed.", })
 
     // {
     //   requester_name: 'Abdul Alo',
@@ -250,6 +250,32 @@ async function run() {
 
   app.get("/my-donation-requests", verifyJWT, async (req, res) => {
     const query = { requester_email: req.jwt_email };
+
+    const cursor = donationCol.find(query).sort({ createdAt: -1 })
+
+    if (req.query.limit) {
+      cursor.limit(parseInt(req.query.limit))
+    }
+
+    const data = await cursor.toArray();
+    res.send(data)
+  })
+
+  app.get("/pending-donation-requests", async (req, res) => {
+    const query = { status: 'pending' };
+
+    const cursor = donationCol.find(query).sort({ createdAt: -1 })
+
+    if (req.query.limit) {
+      cursor.limit(parseInt(req.query.limit))
+    }
+
+    const data = await cursor.toArray();
+    res.send(data)
+  })
+
+  app.get("/all-donation-request", async (req, res) => {
+    const query = {  };
 
     const cursor = donationCol.find(query).sort({ createdAt: -1 })
 
