@@ -104,6 +104,13 @@ async function run() {
     return res.status(401).send({ success: false, message: "Unauthorized access." })
   }
 
+  const requireAdmin = (req, res, next) => {
+    if (req.jwt_user.role != "admin") {
+      return res.status(403).send({ success: false, message: "Unauthorized access" })
+    }
+    return next()
+  }
+
 
   app.get('/', (req, res) => {
     res.send('Hello World!')
@@ -275,7 +282,7 @@ async function run() {
   })
 
   app.get("/all-donation-request", async (req, res) => {
-    const query = {  };
+    const query = {};
 
     const cursor = donationCol.find(query).sort({ createdAt: -1 })
 
@@ -292,8 +299,9 @@ async function run() {
     const query = { _id: new ObjectId(reqId) };
 
     const donationReq = await donationCol.findOne(query);
+    // console.log(donationReq);
 
-    res.send(donationReq)
+    res.send({ success: true, data: donationReq })
 
     // if(req.jwt_user.role=='admin' || donationReq.requester_email==req.jwt_email){
     //     const result=await donationCol.deleteOne(query)
@@ -312,10 +320,10 @@ async function run() {
 
     if (req.jwt_user.role === 'admin' || donationReq.requester_email === req.jwt_email) {
       const result = await donationCol.deleteOne(query)
-      return res.send({ message: result.deletedCount > 0 ? "Deleted success." : "Error deleting the request", success: result.deletedCount > 0 })
+      return res.send({ success: result.deletedCount > 0, message: result.deletedCount > 0 ? "Deleted success." : "Error deleting the request", })
     }
 
-    return res.send(403).send({ message: "Access restricted.", success: false })
+    return res.send(403).send({ success: false, message: "Access restricted.", })
   })
 
   app.post("/edit_profile", verifyJWTFetchUser, async (req, res) => {
@@ -332,10 +340,38 @@ async function run() {
     if (result.modifiedCount) {
       const userExists = await usersCol.findOne(query)
       delete userExists.password;
-      return res.send({ message: "Profile updated", success: true, user: userExists })
+      return res.send({ success: true, message: "Profile updated", user: userExists })
     }
-    return res.send({ message: "Profile update failed", success: false })
+    return res.send({ success: false, message: "Profile update failed", })
   })
+
+
+  app.get("/users", verifyJWTFetchUser, requireAdmin, async (req, res) => {
+    const query = {};
+    const cursor = usersCol.find(query, { password: 0 })
+
+    const result = await cursor.toArray()
+    res.send({ success: true, data: result })
+  })
+
+  app.post("/edit-user/:id", verifyJWTFetchUser, requireAdmin, async (req, res) => {
+    const query = { _id: new ObjectId(req.params.id) };
+
+    const updates = {}
+
+    if (req.body.setStatus != null && ['blocked', 'active'].includes(req.body.setStatus)) {
+       updates.status = req.body.setStatus;
+    }
+    if (req.body.setRole != null && ['admin', 'donor', 'volunteer'].includes(req.body.setRole)) {
+       updates.role = req.body.setRole;
+    }
+
+
+    const result = await usersCol.updateOne(query, { $set: updates })
+    res.send({ success: result.modifiedCount > 0, message: result.modifiedCount > 0 ? `success` : `failed` })
+  })
+
+
 
 
   app.listen(port, () => {
