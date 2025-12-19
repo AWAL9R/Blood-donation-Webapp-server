@@ -505,7 +505,7 @@ async function run() {
 
     const funding = await fundingCol.insertOne({
       name: req.jwt_user.name,
-      amount: amount,
+      amount: Math.floor(amount/100),
       createdAt: new Date(),
       status: "pending"
     })
@@ -542,13 +542,15 @@ async function run() {
     const id = req.body.id;
 
     const session = await stripe.checkout.sessions.retrieve(id);
-    console.log(session);
+    // console.log(session);
 
     if (session.payment_status == "paid") {
       const query = { _id: new ObjectId(session.metadata.funding_id) }
 
-      fundingCol.updateOne(query, { status: 'paid' })
-      return res.send({ success: false })
+      // console.log(query);
+
+      fundingCol.updateOne(query, { $set : { status: 'paid'} })
+      return res.send({ success: true })
     }
 
 
