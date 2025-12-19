@@ -67,6 +67,50 @@ async function run() {
   const usersCol = database.collection('users');
   const donationCol = database.collection('donation');
 
+  //lets create some dummy users
+
+  // for (let i = 0; i < 100; i++) {
+  //   await usersCol.insertOne({
+  //     "email": "dummy.user."+i+"@gmail.com",
+  //     "name": "Abdul A"+i,
+  //     "bloodGroup": "B+",
+  //     "photo": "https://i.ibb.co/S4bdkdcd/1a24b5d93696.jpg",
+  //     "division": "Dhaka",
+  //     "district": "Dhaka",
+  //     "upazila": "Savar",
+  //     "password": "$2b$10$su.mlql0RB6U5lEkR8D.8e0.V.dHg4O2ZPIWQe.dnX3IKcbu89.fG",
+  //     "status": "active",
+  //     "role": "donor",
+  //     "registerAt": {
+  //       "$date": "2025-12-17T15:32:18.121Z"
+  //     }
+  //   })
+  // }
+
+  // lets create some dummy donation requests
+
+  // for (let i = 0; i < 100; i++) {
+  //   await donationCol.insertOne({
+  //     "requester_name": "Kaka Official",
+  //     "requester_email": "arlendudley298@gmail.com",
+  //     "receiver_name": "Jesmin Akter-" + i,
+  //     "bloodGroup": "A+",
+  //     "division": "Mymensingh",
+  //     "district": "Mymensingh",
+  //     "upazila": "Bhaluka",
+  //     "hospital_name": "Chandina hospital-" + i,
+  //     "full_address": "110/1, uttarkhan dhaka 1230",
+  //     "donation_date": "2025-12-20",
+  //     "donation_time": "20:07",
+  //     "request_message": "Delivery Operation-" + i,
+  //     "status": "pending",
+  //     "createdAt": {
+  //       "$date": "2025-12-16T14:05:09.051Z"
+  //     },
+
+  //   })
+  // }
+
 
 
 
@@ -260,12 +304,13 @@ async function run() {
 
     const cursor = donationCol.find(query).sort({ createdAt: -1 })
 
-    if (req.query.limit) {
-      cursor.limit(parseInt(req.query.limit))
-    }
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    cursor.limit(limit).skip(skip)
 
-    const data = await cursor.toArray();
-    res.send(data)
+    const result = await cursor.toArray()
+    const count = await donationCol.countDocuments(query)
+    res.send({ success: true, data: result, totalMatch: count })
   })
 
   app.get("/pending-donation-requests", async (req, res) => {
@@ -273,25 +318,31 @@ async function run() {
 
     const cursor = donationCol.find(query).sort({ createdAt: -1 })
 
-    if (req.query.limit) {
-      cursor.limit(parseInt(req.query.limit))
-    }
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    cursor.limit(limit).skip(skip)
 
-    const data = await cursor.toArray();
-    res.send(data)
+    const result = await cursor.toArray()
+    const count = await donationCol.countDocuments(query)
+    res.send({ success: true, data: result, totalMatch: count })
   })
 
   app.get("/all-donation-request", async (req, res) => {
     const query = {};
 
-    const cursor = donationCol.find(query).sort({ createdAt: -1 })
-
-    if (req.query.limit) {
-      cursor.limit(parseInt(req.query.limit))
+    if (req.query.status && req.query.status != 'all') {
+      query.status = req.query.status;
     }
 
-    const data = await cursor.toArray();
-    res.send(data)
+    const cursor = donationCol.find(query).sort({ createdAt: -1 })
+
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    cursor.limit(limit).skip(skip)
+
+    const result = await cursor.toArray()
+    const count = await donationCol.countDocuments(query)
+    res.send({ success: true, data: result, totalMatch: count })
   })
 
   app.get("/donation/:reqId", async (req, res) => {
@@ -326,6 +377,48 @@ async function run() {
     return res.send(403).send({ success: false, message: "Access restricted.", })
   })
 
+  app.patch("/donation-status/:reqId", verifyJWTFetchUser, async (req, res) => {
+    const { reqId } = req.params;
+    const query = { _id: new ObjectId(reqId) };
+
+    const donationReq = await donationCol.findOne(query);
+
+    const updates = {}
+
+    if (req.body.setStatus != null && ['done', 'canceled'].includes(req.body.setStatus)) {
+      updates.status = req.body.setStatus;
+    }
+
+    if (req.jwt_user.role === 'admin' || req.jwt_user.role === 'volunteer' || donationReq.requester_email === req.jwt_email) {
+      const result = await donationCol.updateOne(query, { $set: updates })
+      return res.send({ success: result.modifiedCount > 0, message: result.modifiedCount > 0 ? `success` : `failed` })
+    }
+
+    return res.send(403).send({ success: false, message: "Access restricted.", })
+  })
+
+  app.patch("/donation-accept/:reqId", verifyJWTFetchUser, async (req, res) => {
+    const { reqId } = req.params;
+    const query = { _id: new ObjectId(reqId) };
+
+    const donationReq = await donationCol.findOne(query);
+
+    const updates = {}
+
+    updates.donor = {
+      name: req.jwt_user.name,
+      email: req.jwt_user.email,
+    }
+    updates.status = 'in-progress';
+
+    // if (req.jwt_user.role === 'admin' || req.jwt_user.role === 'volunteer' || donationReq.requester_email === req.jwt_email) {
+    const result = await donationCol.updateOne(query, { $set: updates })
+    return res.send({ success: result.modifiedCount > 0, message: result.modifiedCount > 0 ? `success` : `failed` })
+    // }
+
+    // return res.send(403).send({ success: false, message: "Access restricted.", })
+  })
+
   app.post("/edit_profile", verifyJWTFetchUser, async (req, res) => {
     const query = { email: req.jwt_email };
     const data = {
@@ -348,10 +441,42 @@ async function run() {
 
   app.get("/users", verifyJWTFetchUser, requireAdmin, async (req, res) => {
     const query = {};
-    const cursor = usersCol.find(query, { password: 0 })
+    if (req.query.status && req.query.status != 'all') {
+      query.status = req.query.status;
+    }
+    const cursor = usersCol.find(query).project({ password: 0 })
+
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    cursor.limit(limit).skip(skip)
 
     const result = await cursor.toArray()
-    res.send({ success: true, data: result })
+    const count = await usersCol.countDocuments(query)
+    res.send({ success: true, data: result, totalMatch: count })
+  })
+
+  app.get("/search-users", async (req, res) => {
+    const query = {};
+    if (req.query.bloodGroup) {
+      query.bloodGroup = req.query.bloodGroup;
+    }
+    if (req.query.district) {
+      query.district = req.query.district;
+    }
+    if (req.query.upazila) {
+      query.upazila = req.query.upazila;
+    }
+
+
+    const cursor = usersCol.find(query).project({ password: 0, status: 0, role: 0, registerAt: 0 })
+
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const skip = req.query.skip ? parseInt(req.query.skip) : 0;
+    cursor.skip(skip).limit(limit)
+
+    const result = await cursor.toArray()
+    const count = await usersCol.countDocuments(query)
+    res.send({ success: true, data: result, totalMatch: count })
   })
 
   app.post("/edit-user/:id", verifyJWTFetchUser, requireAdmin, async (req, res) => {
@@ -360,10 +485,10 @@ async function run() {
     const updates = {}
 
     if (req.body.setStatus != null && ['blocked', 'active'].includes(req.body.setStatus)) {
-       updates.status = req.body.setStatus;
+      updates.status = req.body.setStatus;
     }
     if (req.body.setRole != null && ['admin', 'donor', 'volunteer'].includes(req.body.setRole)) {
-       updates.role = req.body.setRole;
+      updates.role = req.body.setRole;
     }
 
 
