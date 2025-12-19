@@ -555,6 +555,13 @@ async function run() {
     return res.send({ success: false })
   })
 
+  app.get("/fundings", verifyJWT, async (req, res) => {
+
+    const result=await fundingCol.find({status:"paid"}).toArray()
+
+    return res.send({ success: true, data: result })
+  })
+
 
 
 
