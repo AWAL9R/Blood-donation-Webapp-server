@@ -1,15 +1,16 @@
+require('dotenv').config()
 const express = require('express')
 const cors = require('cors');
-require('dotenv').config()
 const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const fs = require('fs');
 const FormData = require('form-data');
 const axios = require('axios');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const jwt_key = process.env.JWT_KEY;
-
+const CLIENT_SIDE_URL = process.env.CLIENT_SIDE_URL;
 
 const MILLS_24H = 86400000;
 
@@ -494,6 +495,32 @@ async function run() {
 
     const result = await usersCol.updateOne(query, { $set: updates })
     res.send({ success: result.modifiedCount > 0, message: result.modifiedCount > 0 ? `success` : `failed` })
+  })
+
+
+  app.post("/funding", verifyJWTFetchUser, async (req, res) => {
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          // Provide the exact Price ID (for example, price_1234) of the product you want to sell
+          price_data: {
+            currency: "USD",
+            unit_amount: Number(req.body.amount || '1') * 100,
+            product_data: {
+              meta_data: {
+                user_email: req.jwt_email
+              }
+            }
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${CLIENT_SIDE_URL}/funding?success=true&id={CHECKOUT_SESSION_ID}`,
+      return_url: `${CLIENT_SIDE_URL}/funding?success=false`
+    });
+
+    res.send({ url: session.url });
   })
 
 
