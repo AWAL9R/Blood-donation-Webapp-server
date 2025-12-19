@@ -67,6 +67,7 @@ async function run() {
   const database = client.db('blood_link');
   const usersCol = database.collection('users');
   const donationCol = database.collection('donation');
+  const fundingCol = database.collection('funding');
 
   //lets create some dummy users
 
@@ -499,28 +500,59 @@ async function run() {
 
 
   app.post("/funding", verifyJWTFetchUser, async (req, res) => {
+
+    const amount = Number(req.body.amount || '1') * 100;
+
+    const funding = await fundingCol.insertOne({
+      name: req.jwt_user.name,
+      amount: amount,
+      createdAt: new Date(),
+      status: "pending"
+    })
+
     const session = await stripe.checkout.sessions.create({
+      customer_email: req.jwt_email,
       line_items: [
         {
           // Provide the exact Price ID (for example, price_1234) of the product you want to sell
           price_data: {
             currency: "USD",
-            unit_amount: Number(req.body.amount || '1') * 100,
+            unit_amount: amount,
             product_data: {
-              meta_data: {
-                user_email: req.jwt_email
-              }
+              name: "funding",
             }
           },
           quantity: 1,
         },
       ],
       mode: 'payment',
+      metadata: {
+        user_email: req.jwt_email,
+        funding_id: funding.insertedId.toString()
+      },
       success_url: `${CLIENT_SIDE_URL}/funding?success=true&id={CHECKOUT_SESSION_ID}`,
-      return_url: `${CLIENT_SIDE_URL}/funding?success=false`
+      cancel_url: `${CLIENT_SIDE_URL}/funding?success=false`
     });
 
     res.send({ url: session.url });
+  })
+
+  app.post("/funding-success", verifyJWTFetchUser, async (req, res) => {
+
+    const id = req.body.id;
+
+    const session = await stripe.checkout.sessions.retrieve(id);
+    console.log(session);
+
+    if (session.payment_status == "paid") {
+      const query = { _id: new ObjectId(session.metadata.funding_id) }
+
+      fundingCol.updateOne(query, { status: 'paid' })
+      return res.send({ success: false })
+    }
+
+
+    return res.send({ success: false })
   })
 
 
