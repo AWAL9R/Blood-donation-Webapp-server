@@ -234,7 +234,8 @@ async function run() {
     if (bcrypt.compareSync(req.body.password, userExists.password) === true) {
       delete userExists.password;
       const user_token = jwt.sign({ email: userExists.email }, jwt_key, { expiresIn: 24 * 60 * 60 });
-      res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true });
+      res.cookie('user_token', user_token, { maxAge: MILLS_24H, httpOnly: true, sameSite: 'none', secure:true });
+      // res.cookie('test', 0, { maxAge: MILLS_24H, httpOnly: true, sameSite: 'none' });
       return res.send({ success: true, message: "Login success...", user: userExists, })
     }
     res.send({ success: false, message: "Something went wrong...", })
