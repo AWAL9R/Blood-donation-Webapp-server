@@ -505,7 +505,7 @@ async function run() {
 
     const funding = await fundingCol.insertOne({
       name: req.jwt_user.name,
-      amount: Math.floor(amount/100),
+      amount: Math.floor(amount / 100),
       createdAt: new Date(),
       status: "pending"
     })
@@ -549,7 +549,7 @@ async function run() {
 
       // console.log(query);
 
-      fundingCol.updateOne(query, { $set : { status: 'paid'} })
+      fundingCol.updateOne(query, { $set: { status: 'paid' } })
       return res.send({ success: true })
     }
 
@@ -559,9 +559,22 @@ async function run() {
 
   app.get("/fundings", verifyJWT, async (req, res) => {
 
-    const result=await fundingCol.find({status:"paid"}).toArray()
+    const result = await fundingCol.find({ status: "paid" }).sort({ createdAt: -1 }).toArray()
 
     return res.send({ success: true, data: result })
+  })
+
+
+  app.get("/stats", verifyJWT, async (req, res) => {
+    const fundings = await fundingCol.find({ status: "paid" }).project({ amount: 1 }).toArray()
+    let fundingTotal = 0;
+    fundings.forEach(item => {
+      fundingTotal += (item.amount || 0);
+    });
+    const donations = await donationCol.countDocuments()
+    const users = await usersCol.countDocuments({ role: "donor" })
+
+    return res.send({ success: true, donors: users, funding: fundingTotal, donations: donations })
   })
 
 
