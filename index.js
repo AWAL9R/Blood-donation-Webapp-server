@@ -58,9 +58,9 @@ const pick = (obj, keys) => Object.fromEntries(keys.map(k => [k, obj[k]]));
 
 async function run() {
   // Connect the client to the server	(optional starting in v4.7)
-  console.log("Database connecting...")
-  await client.connect();
-  console.log("Database connection successful...")
+  // console.log("Database connecting...")
+  // await client.connect();
+  // console.log("Database connection successful...")
   // Send a ping to confirm a successful connection
   // await client.db("admin").command({ ping: 1 }); console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
@@ -243,7 +243,7 @@ async function run() {
 
   app.get('/me', verifyJWTFetchUser, async (req, res) => {
     if (req.jwt_user) {
-      return res.send({ message: "Login success...", user: req.jwt_user, success: true })
+      return res.send({ success: true, message: "Login success...", user: req.jwt_user })
     }
     return res.send({ success: false, message: "Something went wrong...", })
     // const user_token = req.cookies.user_token;
@@ -279,6 +279,9 @@ async function run() {
     req_body.status = 'pending';
     req_body.createdAt = new Date();
 
+    req_body.requester_email = req.jwt_user.email; // force current user to prevent unauthorized creation
+    req_body.requester_name = req.jwt_user.name; // force current user to prevent unauthorized creation
+
     const result = await donationCol.insertOne(req_body);
     if (result.insertedId) {
       return res.send({ success: true, message: "Request created success.", id: result.insertedId })
@@ -303,6 +306,10 @@ async function run() {
 
   app.get("/my-donation-requests", verifyJWT, async (req, res) => {
     const query = { requester_email: req.jwt_email };
+
+    if (req.query.status && req.query.status != 'all') {
+      query.status = req.query.status;
+    }
 
     const cursor = donationCol.find(query).sort({ createdAt: -1 })
 
@@ -364,6 +371,23 @@ async function run() {
     // return res.send(403).send({message:"Access restricted."})
   })
 
+
+  app.patch("/donation/:reqId", verifyJWTFetchUser, async (req, res) => {
+    const { reqId } = req.params;
+    const query = { _id: new ObjectId(reqId) };
+
+    const donationReq = await donationCol.findOne(query);
+
+    if (req.jwt_user.role === 'admin' || donationReq.requester_email === req.jwt_email) {
+      const updates={...req.body}
+      delete updates.requester_email; // prevent editing original author
+      delete updates.requester_name; // prevent editing original author
+      const result = await donationCol.updateOne(query, {$set:updates})
+      return res.send({ success: result.modifiedCount > 0, message: result.modifiedCount > 0 ? "Updated success." : "Error updating the request", })
+    }
+
+    return res.send(403).send({ success: false, message: "Access restricted.", })
+  })
 
   app.delete("/donation/:reqId", verifyJWTFetchUser, async (req, res) => {
     const { reqId } = req.params;
@@ -549,7 +573,7 @@ async function run() {
 
       // console.log(query);
 
-      fundingCol.updateOne(query, { $set: { status: 'paid' } })
+      await fundingCol.updateOne(query, { $set: { status: 'paid' } })
       return res.send({ success: true })
     }
 
@@ -571,10 +595,14 @@ async function run() {
     fundings.forEach(item => {
       fundingTotal += (item.amount || 0);
     });
-    const donations = await donationCol.countDocuments()
+    const donations = await donationCol.find().project({status:1}).toArray()
+    const donationsByStatus={}
+    donations.forEach(item=>{
+      donationsByStatus[item.status]=(donationsByStatus[item.status]||0)+1;
+    })
     const users = await usersCol.countDocuments({ role: "donor" })
 
-    return res.send({ success: true, donors: users, funding: fundingTotal, donations: donations })
+    return res.send({ success: true, donors: users, funding: fundingTotal, donations: donations.length, donationsByStatus })
   })
 
 
