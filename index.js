@@ -43,8 +43,8 @@ const app = express()
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://import-export-lab.web.app",
-    "https://import-export-lab.firebaseapp.com",
+    "https://blood-link-awal9r.web.app",
+    "https://blood-link-awal9r.firebaseapp.com",
   ],
   credentials: true
 }))
