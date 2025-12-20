@@ -1,6 +1,6 @@
 # BloodLink - A blood donation management system
 ## This is server repository
-- [https://github.com/AWAL9R/Blood-donation-Webapp-client.git](Client Repository)
+- Client Repository [https://github.com/AWAL9R/Blood-donation-Webapp-client.git](https://github.com/AWAL9R/Blood-donation-Webapp-client.git)
 ## How to install?
 Step 1:
 ````bash
